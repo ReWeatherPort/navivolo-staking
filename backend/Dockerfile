@@ -1,15 +1,22 @@
-# 使用官方 Python 3.9 映像
-FROM python:3.9-slim
+# 建構階段：下載輪子
+FROM python:3.9-slim AS builder
 
-# 設置工作目錄
 WORKDIR /app
 
-# 複製 requirements.txt 同代碼（從 backend/ 複製到工作目錄）
+# 複製 requirements.txt
 COPY backend/requirements.txt .
-COPY backend/ .
 
-# 安裝依賴
-RUN pip install --no-cache-dir -r requirements.txt
+# 安裝依賴到臨時目錄，強制用 wheel
+RUN pip install --no-cache-dir --prefer-binary -r requirements.txt
+
+# 最終階段
+FROM python:3.9-slim
+
+WORKDIR /app
+
+# 複製已安裝嘅依賴
+COPY --from=builder /usr/local/lib/python3.9/site-packages/ /usr/local/lib/python3.9/site-packages/
+COPY backend/ .
 
 # 暴露端口
 EXPOSE 5000
