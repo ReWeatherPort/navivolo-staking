@@ -11,7 +11,7 @@ COPY . .
 # 安裝依賴
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 暴露端口（如果需要）
+# 暴露端口
 EXPOSE 5000
 
 # 運行應用
