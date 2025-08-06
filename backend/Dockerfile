@@ -4,9 +4,9 @@ FROM python:3.9-slim
 # 設置工作目錄
 WORKDIR /app
 
-# 複製 requirements.txt 同代碼
-COPY requirements.txt .
-COPY . .
+# 複製 requirements.txt 同代碼（從 backend/ 複製到工作目錄）
+COPY backend/requirements.txt .
+COPY backend/ .
 
 # 安裝依賴
 RUN pip install --no-cache-dir -r requirements.txt
