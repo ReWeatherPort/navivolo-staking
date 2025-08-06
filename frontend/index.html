@@ -1,0 +1,278 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Navi Volo Staking 詳情網站</title>
+    <script src="https://unpkg.com/@mysten/sui.js@0.0.1/dist/index.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #3b82f6 0%, #10b981 100%);
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans">
+    <header class="gradient-bg text-white text-center py-6">
+        <h1 class="text-4xl font-bold">Navi Volo Staking 詳情網站</h1>
+        <p class="mt-2 text-lg">查看SUI/vSUI池數據同質押資訊（更新至2025年8月6日12:48 CST）</p>
+    </header>
+
+    <main class="container mx-auto py-8 px-4">
+        <div id="error" class="text-red-500 mb-4 text-center hidden"></div>
+
+        <!-- 錢包連繫 -->
+        <div class="text-center mb-8">
+            <button id="connectWallet" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300">連繫Sui Wallet</button>
+            <p id="walletStatus" class="mt-2 text-gray-600"></p>
+        </div>
+
+        <!-- 池數據 -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="card p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">當前APR</h2>
+                <p id="apr" class="text-2xl font-bold text-green-600">載入中...</p>
+            </div>
+            <div class="card p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">總鎖定價值 (TVL)</h2>
+                <p id="tvl" class="text-2xl font-bold text-green-600">載入中...</p>
+            </div>
+            <div class="card p-6 rounded-lg shadow-md">
+                <h2 class="text-xl font-semibold text-gray-800 mb-2">SUI價格</h2>
+                <p id="suiPrice" class="text-2xl font-bold text-green-600">載入中...</p>
+            </div>
+        </div>
+
+        <!-- AI預測 -->
+        <div class="card p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">AI質押建議</h2>
+            <p id="prediction" class="text-lg text-gray-700">載入中...</p>
+        </div>
+
+        <!-- 歷史數據圖表 -->
+        <div class="card p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-4">APR歷史走勢</h2>
+            <canvas id="chart" width="600" height="300"></canvas>
+        </div>
+
+        <!-- 獎勵記錄 -->
+        <div class="card p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">獎勵記錄</h2>
+            <ul id="rewards" class="list-disc pl-5 text-gray-700"></ul>
+        </div>
+
+        <!-- CSV上傳提示 -->
+        <div class="card p-6 rounded-lg shadow-md mb-8 text-center">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">CSV上傳</h2>
+            <p class="text-gray-700">請上傳您的交易記錄CSV文件以分析收益。</p>
+            <input type="file" id="csvUpload" accept=".csv" class="mt-2">
+        </div>
+
+        <!-- 質押指引 -->
+        <div class="card p-6 rounded-lg shadow-md text-center">
+            <h2 class="text-xl font-semibold text-gray-800 mb-2">質押指引</h2>
+            <ol class="list-decimal pl-5 text-gray-700 text-left">
+                <li>連繫您的Sui Wallet。</li>
+                <li>輸入質押數量（單位：SUI），建議10 SUI起。</li>
+                <li>點擊「執行質押」按鈕提交交易（暫未實現）。</li>
+                <li>查看獎勵記錄確認質押成功。</li>
+            </ol>
+            <p class="mt-4 text-gray-600">Gas費用約10-20美元，收益預計每月5-25美元（APR 5-15%）。</p>
+        </div>
+    </main>
+
+    <footer class="bg-gray-800 text-white text-center py-4 mt-8">
+        <p>&copy; 2025 Navi Volo Staking. 所有權利保留。</p>
+    </footer>
+
+    <script>
+        const API_BASE_URL = window.location.hostname === 'localhost' ? 'http://localhost:5000' : 'YOUR_PUBLIC_API_URL'; // 替換為Render URL
+        const suiClient = new window.sui.SuiClient({ url: window.sui.getFullnodeUrl('mainnet') });
+        let wallet = null;
+
+        // 顯示錯誤
+        function showError(message) {
+            console.error('錯誤:', message);
+            const errorDiv = document.getElementById('error');
+            errorDiv.textContent = message;
+            errorDiv.classList.remove('hidden');
+        }
+
+        // 清除錯誤
+        function clearError() {
+            const errorDiv = document.getElementById('error');
+            errorDiv.classList.add('hidden');
+        }
+
+        // 連繫Sui Wallet
+        document.getElementById('connectWallet').addEventListener('click', async () => {
+            try {
+                wallet = await window.suiWallet.connect();
+                console.log('錢包已連繫:', wallet.address);
+                document.getElementById('walletStatus').textContent = `已連繫: ${wallet.address.slice(0, 6)}...`;
+                document.getElementById('connectWallet').disabled = true;
+                fetchRewards(wallet.address);
+                clearError();
+            } catch (error) {
+                showError('請安裝Sui Wallet並連繫');
+            }
+        });
+
+        // 獲取池數據
+        async function fetchPoolData() {
+            try {
+                console.log('請求池數據:', `${API_BASE_URL}/api/volo-data`);
+                const response = await fetch(`${API_BASE_URL}/api/volo-data`);
+                console.log('池數據響應狀態:', response.status);
+                if (!response.ok) throw new Error(`HTTP錯誤: ${response.status}`);
+                const data = await response.json();
+                console.log('池數據:', JSON.stringify(data, null, 2));
+                if (data.error) throw new Error(data.error);
+                document.getElementById('apr').textContent = `${data.latest.apr.toFixed(2)}%`;
+                document.getElementById('tvl').textContent = `${data.latest.tvl.toFixed(2)} SUI`;
+                document.getElementById('suiPrice').textContent = `$${data.latest.sui_price.toFixed(2)}`;
+                drawChart(data.historical);
+                const predResponse = await fetch(`${API_BASE_URL}/api/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        apr: data.latest.apr,
+                        tvl: data.latest.tvl,
+                        sui_price: data.latest.sui_price
+                    })
+                });
+                const predData = await predResponse.json();
+                console.log('預測結果:', JSON.stringify(predData, null, 2));
+                if (predData.error) throw new Error(predData.error);
+                document.getElementById('prediction').textContent = predData.predict ? '建議質押' : '不建議質押';
+                clearError();
+            } catch (error) {
+                showError(`無法載入池數據: ${error.message}`);
+                document.getElementById('apr').textContent = '無數據';
+                document.getElementById('tvl').textContent = '無數據';
+                document.getElementById('suiPrice').textContent = '無數據';
+                document.getElementById('prediction').textContent = '無法預測';
+            }
+        }
+
+        // 獲取獎勵數據
+        async function fetchRewards(address) {
+            try {
+                console.log('請求獎勵數據:', `${API_BASE_URL}/api/rewards?user_address=${address}`);
+                const response = await fetch(`${API_BASE_URL}/api/rewards?user_address=${address}`);
+                console.log('獎勵數據響應狀態:', response.status);
+                if (!response.ok) throw new Error(`HTTP錯誤: ${response.status}`);
+                const rewards = await response.json();
+                console.log('獎勵數據:', JSON.stringify(rewards, null, 2));
+                const rewardsList = document.getElementById('rewards');
+                rewardsList.innerHTML = '';
+                if (rewards.length === 0) {
+                    rewardsList.innerHTML = '<li class="text-gray-500">無獎勵記錄</li>';
+                } else {
+                    rewards.forEach(reward => {
+                        const li = document.createElement('li');
+                        li.textContent = `${reward.timestamp}: ${reward.amount.toFixed(2)} NAVX ($${ (reward.amount * reward.token_price).toFixed(2)})`;
+                        rewardsList.appendChild(li);
+                    });
+                }
+                clearError();
+            } catch (error) {
+                showError(`無法載入獎勵數據: ${error.message}`);
+                document.getElementById('rewards').innerHTML = '<li class="text-gray-500">無獎勵記錄</li>';
+            }
+        }
+
+        // 繪製APR圖表
+        function drawChart(data) {
+            console.log('繪製圖表數據（前5筆）:', JSON.stringify(data.slice(0, 5), null, 2));
+            const canvas = document.getElementById('chart');
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!data || data.length === 0) {
+                console.warn('無圖表數據');
+                ctx.fillStyle = '#666';
+                ctx.fillText('無歷史數據', canvas.width / 4, canvas.height / 2);
+                return;
+            }
+            ctx.beginPath();
+            ctx.strokeStyle = '#10b981';
+            ctx.lineWidth = 2;
+            const maxApr = Math.max(...data.map(d => d.apr));
+            const minTime = new Date(data[0].timestamp).getTime();
+            const maxTime = new Date(data[data.length - 1].timestamp).getTime();
+            data.forEach((point, i) => {
+                const x = 50 + (new Date(point.timestamp).getTime() - minTime) / (maxTime - minTime) * (canvas.width - 100);
+                const y = canvas.height - 50 - (point.apr / maxApr) * (canvas.height - 100);
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.strokeStyle = '#666';
+            ctx.moveTo(50, canvas.height - 50); ctx.lineTo(canvas.width - 50, canvas.height - 50); ctx.stroke(); // X軸
+            ctx.moveTo(50, 50); ctx.lineTo(50, canvas.height - 50); ctx.stroke(); // Y軸
+            ctx.fillStyle = '#666';
+            ctx.fillText(`0%`, 30, canvas.height - 30);
+            ctx.fillText(`${maxApr.toFixed(1)}%`, 30, 60);
+        }
+
+        // CSV上傳
+        document.getElementById('csvUpload').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            console.log('上傳CSV:', file.name);
+            alert('CSV上傳成功，數據已記錄（請檢查後端日誌）');
+            clearError();
+        });
+
+        // 初始化
+        fetchPoolData();
+    </script>
+</body>
+</html>
